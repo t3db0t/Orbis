@@ -9,6 +9,16 @@
 #import <UIKit/UIKit.h>
 #import "AsyncSocket.h"
 
+typedef enum {
+	PLAY,
+	PAUSE
+} playStateSetting;
+
+typedef enum {
+	CONTROLS,
+	PLAYLIST
+} currentViewSetting;
+
 @interface OrbisViewController : UIViewController {
 	IBOutlet UIView *secondaryView;
 	AsyncSocket *mySocket;
@@ -30,20 +40,23 @@
 	
 	NSString *currentArtist;
 	NSString *currentTitle;
-	NSString *currentFile;	// for use when no "artist" and "title" entries present
-	NSString *fileString;
+	//NSMutableString *currentFile;	// for use when no "artist" and "title" entries present
 	
 	NSInteger currentView;
 	
-	//NSMutableArray *playlistArray;
+	playStateSetting currentPauseButtonState;
+	playStateSetting currentPlayState;
+	playStateSetting lastPlayState;
 }
 
-@property(retain, nonatomic) AsyncSocket *mySocket;
+//@property(retain, nonatomic) AsyncSocket *mySocket;
 
 -(void)flipToPlaylist;
 -(void)flipToControls;
 -(IBAction)touchPauseButton:(id)sender;
 -(void)parseStatusWithString:(NSString *)string;
+-(void)togglePauseButton;
+-(void)togglePauseButtonTo:(playStateSetting)state;
 
 @end
 

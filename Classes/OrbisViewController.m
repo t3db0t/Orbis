@@ -11,30 +11,14 @@
 
 @implementation OrbisViewController
 
-@synthesize mySocket;
-/*
-@synthesize volume;
-@synthesize playlistLength;
-@synthesize currentTime;
-@synthesize totalTime;
-*/
+//@synthesize mySocket;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
 	
 	currentView = 0;
-	//currentArtist = [[NSString alloc] initWithString:@""];
-	//currentArtist = [[NSMutableString alloc] init];
-	//[currentArtist retain];
-	//currentTitle = [[NSString alloc] initWithString:@""];
-	currentArtist = @"";
-	//currentTitle = @"";
-	
-	//[self retain];
-	//NSLog(@"viewcontroller self: %@ / %p", self, self);
-	
+
 	// nav controller stuff
-	
 	playlistButton = [[[UIBarButtonItem alloc]
 					   initWithImage:[UIImage imageNamed:@"playlist_button.png"]
 					   style:UIBarButtonItemStylePlain
@@ -56,8 +40,11 @@
 	self.navigationItem.title = @"Orbis";
 	
 	///// Play/Pause Button /////
+	// sets to pause first
 	
+	currentPauseButtonState = PAUSE;
 	[playButton removeFromSuperview];
+	NSLog(@"initializing cPBState to: %d", currentPauseButtonState);
 	
 	///// SOCKET /////
 	
@@ -113,28 +100,13 @@
 }
 
 - (void)updateView {
-	//NSLog(@"updateView");
-	//NSLog(@"currentTrackLabel: %@",[[self view] currentTrackLabel]);
-	//NSLog(@"view label: %@", [view currentArtistLabel]);
-	
 	[[self view] setTimeCurrent:currentTime];
 	[[self view] setTimeTotal:totalTime];
 	
-	NSLog(@"currentArtist: %@ / %p", currentArtist, currentArtist);
-	//NSString *tempArtist = [[NSString alloc] initWithString:currentArtist];
-	//NSString *tempArtist = currentArtist;
-	//[[[self view] currentArtistLabel] setText:currentArtist];
 	[currentArtistLabel setText:currentArtist];
-	//NSLog(@"currentTitle: %@", currentTitle);
-	//[[[self view] currentTrackLabel] setText:currentTitle];
-	//[currentTrackLabel setText:currentTitle];
-	
-	//[tempArtist release];
-	
-	NSLog(@"updateView>?!");
+	[currentTrackLabel setText:currentTitle];
 	
 	[[self view] setNeedsDisplay];
-	//NSLog(@"leaving updateView");
 }
 
 - (void)flipToPlaylist{
@@ -175,36 +147,40 @@
 								   selector:@selector(pollServer) 
 								   userInfo:nil 
 									repeats:YES];
-	 
 }
 
 -(void)onSocket:(AsyncSocket *)sock didReadData:(NSData*)data withTag:(long)tag {
 	NSString* result = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
 	// Parse data
 	[self parseStatusWithString:result];
+	[result release];
 }
 
 -(void)parseStatusWithString:(NSString *)statusString {
-	//NSLog(@"parseStatusWithString: %@", statusString);
-	/*
-	if ([statusString isEqualToString:@"OK\n"]) {
-		[self updateView];
-		return;
-	}
-	*/
+
 	NSScanner *theScanner;
-	//NSString *fileString;
 	
 	theScanner = [NSScanner scannerWithString:statusString];
 	
 	if ([statusString rangeOfString:@"volume:"].location != NSNotFound) {
-		//NSLog(@"parsing status");
+		NSString *stateString;
+		
 		[theScanner scanString:@"volume:" intoString:NULL];
 		[theScanner scanInteger:&volume];
 		
 		[theScanner scanUpToString:@"playlistlength:" intoString:NULL];
 		[theScanner scanString:@"playlistlength:" intoString:NULL];
 		[theScanner scanInteger:&playlistLength];
+		
+		[theScanner scanUpToString:@"state:" intoString:NULL];
+		[theScanner scanString:@"state:" intoString:NULL];
+		[theScanner scanUpToString:@"\n" intoString:&stateString];
+		
+		if ([stateString isEqualToString:@"play"]) {
+			currentPlayState = PLAY;
+		} else if ([stateString isEqualToString:@"pause"]) {
+			currentPlayState = PAUSE;
+		}
 		
 		[theScanner scanUpToString:@"time:" intoString:NULL];
 		[theScanner scanString:@"time:" intoString:NULL];
@@ -213,28 +189,47 @@
 		[theScanner scanString:@":" intoString:NULL];
 		[theScanner scanInteger:&totalTime];
 	}
-	//NSLog(@"about to check currentsong: %@", [string rangeOfString:@"file:"].location);
-	NSLog(@"parseStatusWithString: %@", statusString);
+
 	if ([statusString rangeOfString:@"file:"].location != NSNotFound) {
-		NSLog(@"parsing currentsong");
+		NSString *fileString;
+		NSString *tempTitle = @"";
+		
 		[theScanner scanUpToString:@"file:" intoString:NULL];
 		[theScanner scanString:@"file:" intoString:NULL];
 		[theScanner scanUpToString:@"\n" intoString:&fileString];
 		
 		[theScanner scanUpToString:@"Artist:" intoString:NULL];
 		[theScanner scanString:@"Artist:" intoString:NULL];
+		
+		if(currentArtist != nil) [currentArtist release];
 		[theScanner scanUpToString:@"\n" intoString:&currentArtist];
+		[currentArtist retain];
 		
 		[theScanner scanUpToString:@"Title:" intoString:NULL];
 		[theScanner scanString:@"Title:" intoString:NULL];
-		[theScanner scanUpToString:@"\n" intoString:&currentTitle];
 		
-		//NSLog(@"about to check fileString");
-		//NSLog(@"fileString: %@", fileString);
-		currentFile	= [fileString lastPathComponent];		
+		[theScanner scanUpToString:@"\n" intoString:&tempTitle];
+		if(currentTitle != nil) [currentTitle release];
+		
+		if ([tempTitle isEqualToString:@""]) {
+			currentTitle = [fileString lastPathComponent];
+		} else {
+			currentTitle = tempTitle;
+		}
+		[currentTitle retain];
 	}
-	NSLog(@"updating view: %@ / %p", currentArtist, currentArtist);
 	[self updateView];
+	
+	// update pause button state
+	if (currentPlayState != lastPlayState) {
+		if (currentPlayState == PLAY && currentPauseButtonState != PAUSE) {
+			[self togglePauseButtonTo:PAUSE];
+		}
+		if (currentPlayState == PAUSE && currentPauseButtonState != PLAY) {
+			[self togglePauseButtonTo:PLAY];
+		}
+	}
+	lastPlayState = currentPlayState;
 }
 
 - (void)sendPause {
@@ -245,11 +240,31 @@
 
 - (IBAction)touchPauseButton:(id)sender {
 	[self sendPause];
+	[self togglePauseButton];
+}
+
+-(void)togglePauseButton {
+	
+	if(currentPauseButtonState == PAUSE)
+	{
+		[self togglePauseButtonTo:PLAY];
+	}
+	else
+	{
+		[self togglePauseButtonTo:PAUSE];
+	}
+}
+
+-(void)togglePauseButtonTo:(playStateSetting)state {
+	if (currentPauseButtonState == state) {
+		return;
+	}
 	
 	[UIView beginAnimations:nil context:NULL];
 	[UIView setAnimationDuration:0.5];
-	if([pauseButton superview] != nil)
-	{
+	if (state == PLAY) {
+		// Show PLAY button
+		currentPauseButtonState = PLAY;
 		[UIView setAnimationTransition: UIViewAnimationTransitionFlipFromRight forView:buttonContainerView cache:YES]; 
 		
 		[buttonContainerView addSubview:playButton];
@@ -257,12 +272,15 @@
 	}
 	else
 	{
+		// Show PAUSE button
+		currentPauseButtonState = PAUSE;
 		[UIView setAnimationTransition: UIViewAnimationTransitionFlipFromLeft forView:buttonContainerView cache:YES]; 
 		
 		[buttonContainerView addSubview:pauseButton];
 		[playButton removeFromSuperview];
 	}
 	[UIView commitAnimations];
+	NSLog(@"set currentPauseButtonState to: %d", currentPauseButtonState);
 }
 
 -(void)onSocketDidDisconnect:(AsyncSocket *)sock {
@@ -287,6 +305,9 @@
 
 - (void)dealloc {
 	[mySocket release];
+	[currentArtist release];
+	[currentTitle release];
+	
     [super dealloc];
 }
 
